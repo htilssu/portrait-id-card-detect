@@ -154,7 +154,7 @@ def process_pdf_portrait(pdf_path, output_dir='outputs', model_path='./model/bes
 
 if __name__ == '__main__':
     pdf_path = 'test-pdf.pdf'
-    os.environ['PATH'] = "C:\\Users\\tolas\Downloads\Release-25.07.0-0\poppler-25.07.0\Library\\bin"
+    os.environ['PATH'] = r"C:\Users\tolas\Downloads\Release-25.07.0-0\poppler-25.07.0\Library\bin"
 
     result = process_pdf_portrait(pdf_path, output_dir='outputs', conf_threshold=0.5, dpi=300)
 
