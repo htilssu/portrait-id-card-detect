@@ -8,6 +8,7 @@ from ultralytics import YOLO
 def get_portrait(image_path, model_path=r'.\model\best.pt', conf_threshold=0.5):
     """
     Detect portraits in an image using YOLOv11 model.
+    Rotates image and checks if any rotation has fewer than 6 classes, skips it.
     
     Args:
         image_path (str): path to the input image
@@ -21,9 +22,9 @@ def get_portrait(image_path, model_path=r'.\model\best.pt', conf_threshold=0.5):
             - detections (list): list of detected objects with bbox, confidence, class_id, class_name
             - annotated_image (ndarray): image with annotations
             - num_detections (int): number of detected objects
+            - rotation_angle (int): angle used for detection (0, 90, 180, 270)
     """
     try:
-        # Kiểm tra file ảnh có tồn tại
         if not Path(image_path).exists():
             return {
                 'success': False,
@@ -46,32 +47,132 @@ def get_portrait(image_path, model_path=r'.\model\best.pt', conf_threshold=0.5):
                 'annotated_image': None
             }
 
-        # Run inference
-        results = model(image, conf=conf_threshold)
+        # Check if image is landscape (width > height) or portrait (height > width)
+        height, width = image.shape[:2]
 
-        # get detections
-        detections = []
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                detection = {
-                    'bbox': box.xyxy[0].cpu().numpy().tolist(),  # [x1, y1, x2, y2]
-                    'confidence': float(box.conf[0]),
-                    'class_id': int(box.cls[0]),
-                    'class_name': model.names[int(box.cls[0])]
+        if width > height:
+            # Image is landscape, check 0° and 180° only
+            print(f"Image is landscape ({width}x{height}), checking 0° and 180°...")
+            rotation_angles = [0, 180]
+
+            for angle in rotation_angles:
+                # Rotate image
+                if angle == 0:
+                    rotated_image = image.copy()
+                elif angle == 180:
+                    rotated_image = cv2.rotate(image, cv2.ROTATE_180)
+
+                results = model(rotated_image, conf=conf_threshold)
+
+                # Get detections
+                detections = []
+                unique_classes = set()
+                for result in results:
+                    boxes = result.boxes
+                    for box in boxes:
+                        class_id = int(box.cls[0])
+                        unique_classes.add(class_id)
+                        detection = {
+                            'bbox': box.xyxy[0].cpu().numpy().tolist(),  # [x1, y1, x2, y2]
+                            'confidence': float(box.conf[0]),
+                            'class_id': class_id,
+                            'class_name': model.names[class_id]
+                        }
+                        detections.append(detection)
+
+                num_classes = len(unique_classes)
+                print(f"Rotation {angle}°: {num_classes} classes detected")
+
+                if num_classes < 6:
+                    print(f"Skipping rotation {angle}° (only {num_classes} classes)")
+                    continue
+
+                print(f"Using rotation {angle}° with {num_classes} classes")
+                annotated_image = results[0].plot()
+
+                return {
+                    'success': True,
+                    'image': rotated_image,
+                    'detections': detections,
+                    'annotated_image': annotated_image,
+                    'num_detections': len(detections),
+                    'rotation_angle': angle
                 }
-                detections.append(detection)
 
-        # draw annotated image
-        annotated_image = results[0].plot()
+            # If all rotations have < 6 classes, return last rotation result
+            print(f"All rotations have < 6 classes. Using last rotation (180°)")
+            annotated_image = results[0].plot()
 
-        return {
-            'success': True,
-            'image': image,
-            'detections': detections,
-            'annotated_image': annotated_image,
-            'num_detections': len(detections)
-        }
+            return {
+                'success': True,
+                'image': rotated_image,
+                'detections': detections,
+                'annotated_image': annotated_image,
+                'num_detections': len(detections),
+                'rotation_angle': 180
+            }
+        else:
+            # Image is portrait, rotate 90° or 270° to make it landscape
+            print(f"Image is portrait ({width}x{height}), checking 90° and 270°...")
+            rotation_angles = [90, 270]
+
+            for angle in rotation_angles:
+                # Rotate image
+                if angle == 90:
+                    rotated_image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+                elif angle == 270:
+                    rotated_image = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+                # Run inference on rotated image
+                results = model(rotated_image, conf=conf_threshold)
+
+                # Get detections
+                detections = []
+                unique_classes = set()
+                for result in results:
+                    boxes = result.boxes
+                    for box in boxes:
+                        class_id = int(box.cls[0])
+                        unique_classes.add(class_id)
+                        detection = {
+                            'bbox': box.xyxy[0].cpu().numpy().tolist(),
+                            'confidence': float(box.conf[0]),
+                            'class_id': class_id,
+                            'class_name': model.names[class_id]
+                        }
+                        detections.append(detection)
+
+                num_classes = len(unique_classes)
+                print(f"Rotation {angle}°: {num_classes} classes detected")
+
+                if num_classes < 6:
+                    print(f"Skipping rotation {angle}° (only {num_classes} classes)")
+                    continue
+
+                print(f"Using rotation {angle}° with {num_classes} classes")
+                annotated_image = results[0].plot()
+
+                return {
+                    'success': True,
+                    'image': rotated_image,
+                    'detections': detections,
+                    'annotated_image': annotated_image,
+                    'num_detections': len(detections),
+                    'rotation_angle': angle
+                }
+
+            # If all rotations have < 6 classes, return last rotation result
+            print(f"All rotations have < 6 classes. Using last rotation (270°)")
+            annotated_image = results[0].plot()
+
+            return {
+                'success': True,
+                'image': rotated_image,
+                'detections': detections,
+                'annotated_image': annotated_image,
+                'num_detections': len(detections),
+                'rotation_angle': 270
+            }
 
     except Exception as e:
         return {
@@ -168,91 +269,16 @@ def save_result(result, output_path):
     return False
 
 
-def get_default_detect(image_path, conf_threshold=0.5, model_name='yolov8n.pt'):
-    """
-    Detect objects using YOLOv8 default pretrained model (COCO dataset)
-    without using custom-trained weights.
-
-    Args:
-        image_path (str): path to the input image
-        conf_threshold (float): confidence threshold (default: 0.5)
-        model_name (str): YOLO model name (default: 'yolov8n.pt')
-
-    Returns:
-        dict: Result including:
-            - success (bool): status
-            - image (ndarray): original image
-            - detections (list): list of objects (bbox, conf, class_id, class_name)
-            - annotated_image (ndarray): image with bounding boxes
-            - num_detections (int): number of detected objects
-    """
-    try:
-        # Kiểm tra ảnh tồn tại
-        if not Path(image_path).exists():
-            return {
-                'success': False,
-                'error': f'File không tồn tại: {image_path}',
-                'image': None,
-                'detections': [],
-                'annotated_image': None
-            }
-
-        # Load model YOLO mặc định
-        model = YOLO(model_name)
-
-        image = cv2.imread(image_path)
-        if image is None:
-            return {
-                'success': False,
-                'error': f'Không đọc được ảnh: {image_path}',
-                'image': None,
-                'detections': [],
-                'annotated_image': None
-            }
-
-        # Dự đoán
-        results = model(image, conf=conf_threshold)
-
-        detections = []
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                detection = {
-                    'bbox': box.xyxy[0].cpu().numpy().tolist(),
-                    'confidence': float(box.conf[0]),
-                    'class_id': int(box.cls[0]),
-                    'class_name': model.names[int(box.cls[0])]
-                }
-                detections.append(detection)
-
-        annotated_image = results[0].plot()
-
-        return {
-            'success': True,
-            'image': image,
-            'detections': detections,
-            'annotated_image': annotated_image,
-            'num_detections': len(detections)
-        }
-
-    except Exception as e:
-        return {
-            'success': False,
-            'error': str(e),
-            'image': None,
-            'detections': [],
-            'annotated_image': None
-        }
-
-
 if __name__ == '__main__':
-    image_path = 'D:/portrait-id-detect/images/cccd2.png'
+    image_path = 'D:\\portrait-id-detect\\images\\cccd2.png'
 
     print('Detecting...')
     result = get_portrait(image_path)
 
     if result['success']:
         print(f"Detect {result['num_detections']} objects:")
+        if 'rotation_angle' in result:
+            print(f"Rotation angle used: {result['rotation_angle']}°")
 
         for i, det in enumerate(result['detections'], 1):
             print(f"  {i}. {det['class_name']} ({det['confidence']:.0%})")
