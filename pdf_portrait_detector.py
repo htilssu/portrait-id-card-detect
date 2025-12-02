@@ -68,7 +68,7 @@ def pdf_to_image(pdf_path, output_dir='temp', page_number=1, dpi=1200):
 
 
 def process_pdf_portrait(pdf_path, output_dir='outputs', model_path='./model/best.pt',
-                         conf_threshold=0.5, class_filter='portrait', dpi=300):
+                         conf_threshold=0.5, class_filter='portrait', dpi=300, min_portrait_confidence=0.7):
     """
     Xử lý PDF: Convert sang ảnh -> Detect portrait -> Cắt và lưu
     
@@ -79,6 +79,7 @@ def process_pdf_portrait(pdf_path, output_dir='outputs', model_path='./model/bes
         conf_threshold (float): Ngưỡng confidence
         class_filter (str): Tên class cần filter (mặc định: 'portrait')
         dpi (int): Độ phân giải khi convert PDF
+        min_portrait_confidence (float): Ngưỡng confidence tối thiểu cho portrait (mặc định: 0.7)
     
     Returns:
             - success (bool): Trạng thái thực hiện
@@ -127,10 +128,12 @@ def process_pdf_portrait(pdf_path, output_dir='outputs', model_path='./model/bes
 
         save_result(detect_result, annotated_path)
 
-        crop_result = crop_portraits(detect_result, output_dir=output_dir, class_filter=class_filter)
+        crop_result = crop_portraits(detect_result, output_dir=output_dir, class_filter=class_filter, min_confidence=min_portrait_confidence)
 
         if crop_result['success'] and crop_result['cropped_count'] > 0:
             print(f'✓ Đã cắt {crop_result["cropped_count"]} portrait -> {output_dir}/')
+        elif crop_result['success'] and 'message' in crop_result:
+            print(f'⚠ {crop_result["message"]}')
 
         print('✓ Hoàn thành!')
 
@@ -156,7 +159,7 @@ if __name__ == '__main__':
     pdf_path = 'D:\portrait-id-detect\\639dcda5-3996-484b-86ea-298ee68e81c1.pdf'
     os.environ['PATH'] = r"C:\Users\tolas\Downloads\Release-25.07.0-0\poppler-25.07.0\Library\bin"
 
-    result = process_pdf_portrait(pdf_path, output_dir='outputs', conf_threshold=0.5, dpi=300)
+    result = process_pdf_portrait(pdf_path, output_dir='outputs', conf_threshold=0.5, dpi=300, min_portrait_confidence=0.7)
 
     if not result['success']:
         print(f'✗ Lỗi: {result["error"]}')

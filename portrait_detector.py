@@ -5,14 +5,14 @@ import cv2
 from ultralytics import YOLO
 
 
-def get_portrait(image_path, model_path=r'.\model\best.pt', conf_threshold=0.5):
+def get_portrait(image_path, model_path=r'.\model\best_openvino_model', conf_threshold=0.5):
     """
     Detect portraits in an image using YOLOv11 model.
     Checks all 4 rotations (0°, 90°, 180°, 270°) and selects the one with the most classes.
     
     Args:
         image_path (str): path to the input image
-        model_path (str): path to model checkpoint (default: .\model\best.pt)
+        model_path (str): path to model checkpoint
         conf_threshold (float): confidence threshold (default: 0.5)
     
     Returns:
@@ -119,7 +119,7 @@ def get_portrait(image_path, model_path=r'.\model\best.pt', conf_threshold=0.5):
         }
 
 
-def crop_portraits(result, output_dir='outputs', class_filter='portrait'):
+def crop_portraits(result, output_dir='outputs', class_filter='portrait', min_confidence=0.7):
     """
     Crop and save portraits from detection results.
     
@@ -127,6 +127,7 @@ def crop_portraits(result, output_dir='outputs', class_filter='portrait'):
         result (dict): result from get_portrait
         output_dir (str): directory to save cropped images (default: 'outputs')
         class_filter (str): class name to filter (default: 'portrait')
+        min_confidence (float): minimum confidence threshold for portraits (default: 0.7)
     
     Returns:
         dict: Kết quả bao gồm:
@@ -158,8 +159,19 @@ def crop_portraits(result, output_dir='outputs', class_filter='portrait'):
                 'message': f'Can not find "{class_filter}"'
             }
 
+        # Filter portraits with confidence >= min_confidence
+        high_conf_portraits = [d for d in portrait_detections if d['confidence'] >= min_confidence]
+
+        if len(high_conf_portraits) == 0:
+            return {
+                'success': True,
+                'cropped_count': 0,
+                'saved_paths': [],
+                'message': f'Không phát hiện được portrait với confidence >= {min_confidence}'
+            }
+
         # Only crop the portrait with the highest confidence
-        best_portrait = max(portrait_detections, key=lambda d: d['confidence'])
+        best_portrait = max(high_conf_portraits, key=lambda d: d['confidence'])
 
         bbox = best_portrait['bbox']
         x1, y1, x2, y2 = map(int, bbox)
@@ -210,7 +222,7 @@ if __name__ == '__main__':
     print('Detecting...')
     result = get_portrait(image_path)
 
-    if result['success']:
+    if result['success'] and result['num_detections'] > 0:
         print(f"Detect {result['num_detections']} objects:")
         if 'rotation_angle' in result:
             print(f"Rotation angle used: {result['rotation_angle']}°")
@@ -221,8 +233,12 @@ if __name__ == '__main__':
         output_path = 'output_result.jpg'
         save_result(result, output_path)
 
-        crop_result = crop_portraits(result, output_dir='outputs')
+        crop_result = crop_portraits(result, output_dir='outputs', min_confidence=0.7)
         if crop_result['cropped_count'] > 0:
             print(f"Cropped {crop_result['cropped_count']} portrait -> outputs/")
-    else:
+        elif 'message' in crop_result:
+            print(crop_result['message'])
+    elif not result['success']:
         print(f"Error: {result['error']}")
+    else:
+        print("No objects detected.")
